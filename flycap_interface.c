@@ -9,21 +9,24 @@
 #include <mex.h>
 #include <stdint.h>
 #include "C/FlyCapture2_C.h"
-
-void command_init_camera(int , mxArray * [], int, const mxArray * []);
-void command_start_capture(int , mxArray * [], int, const mxArray * []);
-void command_stop_capture(int , mxArray * [], int, const mxArray * []);
-void command_enableEmbededInfo(int , mxArray * [], int, const mxArray * []);
-void command_Setfmt7ImageSettings(int , mxArray * [], int, const mxArray * []);
-void command_GetImage(int , mxArray * [], int, const mxArray * []);
-void PrintCameraInfo();
+#include "flycap_interface.h"
 
 fc2Context context;
 fc2PGRGuid guid;
 
-static void CloseComms(void)
-{
+static void CloseComms(void) {
+    fc2Context cleanContext;
     fc2Error error;
+    
+    error = fc2StopCapture( context );
+    if ( error == FC2_ERROR_OK | error == FC2_ERROR_ISOCH_NOT_STARTED){
+        mexPrintf("Capture Stopped \n");
+    }
+    else {
+        mexPrintf( "Error in CloseComms:fc2StopCapture: %d\n", error );
+        mexErrMsgTxt("CloseComms:fc2StopCapture Failed");
+    }
+    
     mexPrintf("Closing connection to flycap2. \n");
     error = fc2DestroyContext( context );
     if ( error != FC2_ERROR_OK )
@@ -32,7 +35,7 @@ static void CloseComms(void)
         mexPrintf( "Error in fc2DestroyContext: %d\n", error );
         mexErrMsgTxt("fc2DestroyContext Failed");
     }
-    context=NULL;
+    context=cleanContext;
 }
 
 void mexFunction( int nlhs, mxArray *plhs[],
@@ -57,6 +60,10 @@ void mexFunction( int nlhs, mxArray *plhs[],
         command_Setfmt7ImageSettings(nlhs, plhs, nrhs, prhs);
     else if (!strcmp(command_name, "GetImage"))
         command_GetImage(nlhs, plhs, nrhs, prhs);
+    else if (!strcmp(command_name, "GetProperty"))
+        command_GetProperty(nlhs, plhs, nrhs, prhs);
+    else if (!strcmp(command_name, "SetProperty"))
+        command_SetProperty(nlhs, plhs, nrhs, prhs);
     else
         mexErrMsgTxt("No such command");
 }
@@ -108,6 +115,12 @@ void command_init_camera(int nlhs, mxArray * plhs[],int nrhs, const mxArray * pr
             mexPrintf( "Error in fc2Connect: %d\n", error );
             mexErrMsgIdAndTxt("chrislib:flycapInterface:fc2Connect","Error in fc2Connect");
         }
+        
+        error =fc2WriteRegister(context,0x1050,0x80000001); //BAYER_MONO_CTRL: turn on
+        error =fc2WriteRegister(context,0x808,0x80000000); //Sharpness turn off
+        error =fc2WriteRegister(context,0x818,0xC0000400); //Gamma: turn off
+        
+        
     }
     else {
         //mexPrintf( "Already connected to camera: %d\n", serial );
@@ -165,16 +178,15 @@ void command_enableEmbededInfo(int nlhs, mxArray * plhs[],int nrhs, const mxArra
     if ( embeddedInfo.timestamp.available != 0 )
     {
         embeddedInfo.timestamp.onOff = enableEmbeddedInfo;
-        embeddedInfo.timestamp.onOff = enableEmbeddedInfo;
-        embeddedInfo.gain.onOff = enableEmbeddedInfo;
-        embeddedInfo.shutter.onOff = enableEmbeddedInfo;
-        embeddedInfo.brightness.onOff = enableEmbeddedInfo;
-        embeddedInfo.exposure.onOff = enableEmbeddedInfo;
+        embeddedInfo.gain.onOff = false;
+        embeddedInfo.shutter.onOff = false;
+        embeddedInfo.brightness.onOff = false;
+        embeddedInfo.exposure.onOff = false;
         embeddedInfo.whiteBalance.onOff = false;
-        embeddedInfo.frameCounter.onOff = enableEmbeddedInfo;
+        embeddedInfo.frameCounter.onOff = false;
         embeddedInfo.strobePattern.onOff = false;
         embeddedInfo.GPIOPinState.onOff = false;
-        embeddedInfo.ROIPosition.onOff = enableEmbeddedInfo;
+        embeddedInfo.ROIPosition.onOff = false;
     }
     
     error = fc2SetEmbeddedImageInfo( context, &embeddedInfo );
@@ -194,6 +206,8 @@ void command_Setfmt7ImageSettings(int nlhs, mxArray * plhs[],int nrhs, const mxA
     double *roiDbl;
     unsigned int roi[4];
     int i;
+    BOOL captureWasRunning;
+    
     
     roiDbl = mxGetPr(prhs[1]);
     
@@ -202,10 +216,16 @@ void command_Setfmt7ImageSettings(int nlhs, mxArray * plhs[],int nrhs, const mxA
     }
     
     //mexPrintf("x %d y %d w %d h %d",roi[0],roi[1],roi[2],roi[3]);
-    if (nrhs != 2)
-        mexErrMsgTxt("Insufficient arguments");
-    
-    fmt7ImageSettings.mode = FC2_MODE_0;
+    if (nrhs == 2){
+        fmt7ImageSettings.mode = FC2_MODE_0;
+    }
+    else if (nrhs == 3) {
+        fmt7ImageSettings.mode = (int)mxGetScalar(prhs[2]);
+    }
+    else {
+        mexErrMsgTxt("command_Setfmt7ImageSettings:Wrong number of arguments");
+    }
+
     fmt7ImageSettings.offsetX = roi[0];
     fmt7ImageSettings.offsetY = roi[1];
     fmt7ImageSettings.width = roi[2];
@@ -219,11 +239,32 @@ void command_Setfmt7ImageSettings(int nlhs, mxArray * plhs[],int nrhs, const mxA
         mexErrMsgTxt("fc2ValidateFormat7Settings");
     }
     
+    //first check capture is stopped and stopp if needed
+    error = fc2StopCapture( context );
+    if ( error == FC2_ERROR_OK ){
+        captureWasRunning=true;
+    } else if ( error == FC2_ERROR_ISOCH_NOT_STARTED) {
+        captureWasRunning=false;
+    }
+    else {
+        mexErrMsgTxt("waht");
+    }
+    
     error=fc2SetFormat7ConfigurationPacket( context,&fmt7ImageSettings,packetInfo.recommendedBytesPerPacket);
     if ( error != FC2_ERROR_OK )
     {
         mexPrintf( "Error in fc2SetFormat7ConfigurationPacket: %d\n", error );
         mexErrMsgTxt("fc2SetFormat7ConfigurationPacket");
+    }
+    
+    if (captureWasRunning)
+    {
+        error = fc2StartCapture( context );
+        if ( error != FC2_ERROR_OK )
+        {
+            mexPrintf( "Error in fc2StartCapture: %d\n", error );
+            mexErrMsgIdAndTxt("chrislib:flycapInterface:fc2StartCapture","Error in fc2StartCapture");
+        }
     }
 }
 
@@ -232,10 +273,8 @@ void command_GetImage(int nlhs, mxArray * plhs[],int nrhs, const mxArray * prhs 
     fc2Error error;
     fc2Image rawImage;
     uint16_t *ImagePointer;
-    uint16_t *rawdata;
     fc2TimeStamp ts;
     double *timestamp; 
-    int i;
     int NumPixels;
     
     if (nlhs != 2)
@@ -259,13 +298,14 @@ void command_GetImage(int nlhs, mxArray * plhs[],int nrhs, const mxArray * prhs 
     {
                 
         //pass image
-        plhs[0] = mxCreateNumericMatrix(rawImage.rows, rawImage.cols, mxUINT16_CLASS, mxREAL);
+        //plhs[0] = mxCreateNumericMatrix(rawImage.cols*rawImage.rows, 1, mxUINT16_CLASS, mxREAL);
+        plhs[0] = mxCreateNumericMatrix(rawImage.cols, rawImage.rows, mxUINT16_CLASS, mxREAL);
         ImagePointer = mxGetData(plhs[0]);
         NumPixels=(rawImage.cols*rawImage.rows);
         
         memcpy(ImagePointer,rawImage.pData,rawImage.dataSize);//seemed easiet way to get correct output format.
         
-        // Get and pass timestamp
+       // Get and pass timestamps
         plhs[1]=mxCreateDoubleMatrix(5, 1, mxREAL);
         timestamp=mxGetPr(plhs[1]);
         
@@ -275,6 +315,17 @@ void command_GetImage(int nlhs, mxArray * plhs[],int nrhs, const mxArray * prhs 
         timestamp[2]=(double)ts.cycleSeconds;
         timestamp[3]=(double)ts.cycleCount;
         timestamp[4]=(double)ts.cycleOffset;
+        
+//         plhs[1]=mxCreateNumericMatrix(5, 1, mxINT8_CLASS, mxREAL);
+//         timestamp=mxGetPr(plhs[1]);
+//         
+//         //ts = fc2GetImageTimeStamp( &rawImage);
+//         timestamp[0]=rawImage.pData[0];
+//         timestamp[1]=rawImage.pData[1];
+//         timestamp[2]=rawImage.pData[2];
+//         timestamp[3]=rawImage.pData[3];
+//         timestamp[4]=(0);
+        
     }
     
     error = fc2DestroyImage( &rawImage );
@@ -283,6 +334,138 @@ void command_GetImage(int nlhs, mxArray * plhs[],int nrhs, const mxArray * prhs 
         mexPrintf( "Error in fc2DestroyImage: %d\n", error );
         mexErrMsgIdAndTxt("chrislib:flycapInterface:fc2DestroyImage","Error in fc2DestroyImage");
     }
+}
+
+void command_GetProperty(int nlhs, mxArray * plhs[],int nrhs, const mxArray * prhs []){
+    
+    fc2Error error;
+	fc2PropertyInfo propInfo;
+	fc2Property prop;
+    float propValueOut;
+    
+    if (nrhs != 2)
+        mexErrMsgTxt("Insufficient input arguments, need 2");
+    if (nlhs != 1)
+        mexErrMsgTxt("Insufficient output arguments, need 1");
+    
+    propInfo.type = (int)mxGetScalar(prhs[1]);
+    error = fc2GetPropertyInfo(context, &propInfo);
+    if (error != FC2_ERROR_OK)
+    {
+        propValueOut=0.0f;
+    } else {
+        if (propInfo.present)
+        {
+            // Get the frame rate
+            prop.type = (int)mxGetScalar(prhs[1]);
+            error = fc2GetProperty(context, &prop);
+            if (error != FC2_ERROR_OK)
+            {
+                propValueOut=0.0f;
+            }
+            
+            // Set the frame rate.
+            // Note that the actual recording frame rate may be slower,
+            // depending on the bus speed and disk writing speed.
+            propValueOut=prop.absValue;
+        } else {
+            propValueOut=0.0f;
+        }
+    }
+    
+    plhs[0]=mxCreateDoubleScalar(propValueOut);       
+}
+
+void command_SetProperty(int nlhs, mxArray * plhs[],int nrhs, const mxArray * prhs []){
+        
+    fc2Error error;
+	fc2PropertyInfo propInfo;
+	fc2Property prop;
+    float propValueOut;
+    
+    if (nrhs != 3)
+        mexErrMsgTxt("Insufficient input arguments, need 2");
+    
+    propInfo.type = (int)mxGetScalar(prhs[1]);
+    error = fc2GetPropertyInfo(context, &propInfo);
+    if (error != FC2_ERROR_OK)
+    {
+        mexPrintf( "Error in command_SetProperty:fc2GetPropertyInfo: %d\n", error );
+        mexErrMsgIdAndTxt("chrislib:flycapInterface:command_SetProperty:fc2GetPropertyInfo","Error in command_SetProperty:fc2GetPropertyInfo");
+    }
+    if (propInfo.present)
+    {
+        // Get the frame rate
+        prop.type = (int)mxGetScalar(prhs[1]);
+        prop.present;
+        prop.absControl=true;
+        prop.onePush=false;
+        prop.onOff=true;
+        prop.autoManualMode=false;
+        prop.absValue=(float)mxGetScalar(prhs[2]);
+         
+        error = fc2SetProperty(context, &prop);
+        if (error != FC2_ERROR_OK)
+        {
+            mexPrintf( "Error in command_SetProperty:fc2SetProperty: %d\n", error );
+            mexErrMsgIdAndTxt("chrislib:flycapInterface:command_SetProperty:fc2SetProperty","Error in command_SetProperty:fc2SetProperty");
+        }
+    }
+}
+
+
+float GetFrameRate()
+{
+	fc2Error error;
+	fc2PropertyInfo propInfo;
+	fc2Property prop;
+
+	// Check if the camera supports the FRAME_RATE property
+	//printf( "Detecting frame rate from camera... \n" );
+	propInfo.type = FC2_FRAME_RATE;
+	error = fc2GetPropertyInfo(context, &propInfo);
+	if (error != FC2_ERROR_OK)
+	{
+		return 0.0f;
+	}
+
+	if (propInfo.present)
+	{
+		// Get the frame rate
+		prop.type = FC2_FRAME_RATE;
+		error = fc2GetProperty(context, &prop);
+		if (error != FC2_ERROR_OK)
+		{
+			return 0.0f;
+		}
+
+		// Set the frame rate.
+		// Note that the actual recording frame rate may be slower,
+		// depending on the bus speed and disk writing speed.
+		return prop.absValue;
+	}
+
+	return 0.0f;
+}
+
+float SetFrameRate(float newFrameRate)
+{
+	fc2Error error;
+	fc2PropertyInfo propInfo;
+	fc2Property prop;
+
+    prop.type=FC2_FRAME_RATE;
+    prop.absValue=newFrameRate;
+    prop.autoManualMode=false;
+            
+	error = fc2SetProperty(context, &prop);
+	if (error != FC2_ERROR_OK)
+	{
+		mexPrintf( "Error in SetFrameRate:fc2SetProperty %d\n", error );
+        mexErrMsgIdAndTxt("chrislib:flycapInterface:SetFrameRate:fc2SetProperty","Error in SetFrameRate:fc2SetProperty");
+	}
+
+	return GetFrameRate();
 }
 
 void PrintCameraInfo(){
