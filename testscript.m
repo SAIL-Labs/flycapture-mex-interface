@@ -1,48 +1,23 @@
 %testscript
 clc;clear
-%mex -I"C:\Program Files\Point Grey Research\FlyCapture2\include" -L"C:\Program Files\Point Grey Research\FlyCapture2\lib64\C" -lFlyCapture2_C  flycap_interface.c
-flycap_interface('init_camera',12380028)
 
+flycap_interface('init_camera',12380028) % if you need more then camera, you'll need to recomplie with new name at this time.
 
-%flycap_interface('Setfmt7ImageSettings',[0 0 640 512],1)
-%flycap_interface('Setfmt7ImageSettings',[0 0 1280 1024],0)
+%flycap_interface('Setfmt7ImageSettings',[0 0 640 512],1) % change 2x2 binning mode
+%flycap_interface('Setfmt7ImageSettings',[0 0 1280 1024]) % only changes roi, need to ensure you pick valid roi. 
+flycap_interface('Setfmt7ImageSettings',[0 0 1280 1024],0) % works on 13e4m, full frame, mode 0.
 
 flycap_interface('start_capture')
 
-%flycap_interface('SetProperty',fcProp.FC2_GAMMA,1.25)
+flycap_interface('SetProperty',fcProp.FC2_SHUTTER,1)
+flycap_interface('SetProperty',fcProp.FC2_FRAME_RATE,10)
+
+fr=flycap_interface('GetProperty',fcProp.FC2_FRAME_RATE)
 
 flycap_interface('enableEmbededInfo',false)
-%data=ones(1400,48,48);
-tic
-for i=1:100
-    [rawdata, ts(:,i)]=flycap_interface('GetImage');
-    rawdata10=bitshift(rawdata,-6);
-    rawdata10alt=rawdata/64;
-end
-1/(toc/i)
 
-flycap_interface('stop_capture')
+[rawdata, computerTimeStamp]=flycap_interface('GetImage');
 
-%clear flycap_interface
-% 
-% %%
-% for i=1:1
-%     imagesc(rawdata(:,:,i))
-%     drawnow
-% end
-% %%
-% histogram(double((rawdata(:,:,i)))/16,1:2^12)
-% %xlim([500 1800])
-%  
+flycap_interface('stop_capture') % if you start flycap be sure to stop capture first and vice versa
 
-% flycap_interface('init_camera',12380028)
-% flycap_interface('start_capture')
-% [rawdata, ts]=flycap_interface('GetImage');
-% flycap_interface('stop_capture')
-% clear flycap_interface
-% %%
-% rawdata10=bitshift(rawdata,-6);
-% rawdata10=rawdata/64;
-% h=histogram(bitshift(rawdata,-6),0:2^10);
-% %imagesc(rawdata)
-% plot(h.Values)
+clear flycap_interface
