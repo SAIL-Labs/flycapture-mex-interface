@@ -19,7 +19,7 @@ static void CloseComms(void) {
     fc2Error error;
     
     error = fc2StopCapture( context );
-    if ( error == FC2_ERROR_OK | error == FC2_ERROR_ISOCH_NOT_STARTED){
+    if ( (error == FC2_ERROR_OK) | (error == FC2_ERROR_ISOCH_NOT_STARTED)){
         mexPrintf("Capture Stopped \n");
     }
     else {
@@ -136,10 +136,14 @@ void command_start_capture(int nlhs, mxArray * plhs[],int nrhs, const mxArray * 
         mexErrMsgTxt("Too many arguments");
     
     error = fc2StartCapture( context );
-    if ( error != FC2_ERROR_OK )
+    if (error == FC2_ERROR_ISOCH_ALREADY_STARTED)
+    {
+        mexWarnMsgIdAndTxt("chrislib:flycapInterface:fc2StartCapture:CaptureAlreadyRunning","Capture already started.");
+    }       
+    else if ( error != FC2_ERROR_OK )
     {
         mexPrintf( "Error in fc2StartCapture: %d\n", error );
-        mexErrMsgIdAndTxt("chrislib:flycapInterface:fc2StartCapture","Error in fc2StartCapture");
+        mexErrMsgIdAndTxt("chrislib:flycapInterface:fc2StartCapture:Faliure","Error in fc2StartCapture");
     }
 }
 
@@ -150,7 +154,11 @@ void command_stop_capture(int nlhs, mxArray * plhs[],int nrhs, const mxArray * p
         mexErrMsgTxt("Too many arguments");
     
     error = fc2StopCapture( context );
-    if ( error != FC2_ERROR_OK )
+    if (error == FC2_ERROR_ISOCH_NOT_STARTED)
+    {
+        mexWarnMsgIdAndTxt("chrislib:flycapInterface:fc2StartCapture:CaptureAlreadyStopped","Capture not running.");
+    }
+    else if ( error != FC2_ERROR_OK )
     {
         mexPrintf( "Error in fc2StopCapture: %d\n", error );
         mexErrMsgIdAndTxt("chrislib:flycapInterface:fc2StopCapture","Error in fc2StopCapture");
