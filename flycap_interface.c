@@ -64,6 +64,8 @@ void mexFunction( int nlhs, mxArray *plhs[],
         command_GetProperty(nlhs, plhs, nrhs, prhs);
     else if (!strcmp(command_name, "SetProperty"))
         command_SetProperty(nlhs, plhs, nrhs, prhs);
+    else if (!strcmp(command_name, "defaultSettings"))
+        command_defaultSettings(nlhs, plhs, nrhs, prhs);
     else
         mexErrMsgTxt("No such command");
 }
@@ -114,19 +116,20 @@ void command_init_camera(int nlhs, mxArray * plhs[],int nrhs, const mxArray * pr
         {
             mexPrintf( "Error in fc2Connect: %d\n", error );
             mexErrMsgIdAndTxt("chrislib:flycapInterface:fc2Connect","Error in fc2Connect");
-        }
-        
-        error =fc2WriteRegister(context,0x1050,0x80000001); //BAYER_MONO_CTRL: turn on
-        error =fc2WriteRegister(context,0x808,0x80000000); //Sharpness turn off
-        error =fc2WriteRegister(context,0x818,0xC0000400); //Gamma: turn off
-        
-        
+        }        
     }
     else {
         //mexPrintf( "Already connected to camera: %d\n", serial );
         mexWarnMsgIdAndTxt("chrislib:flycapInterface:AlreadyConnected","Already connected to a camera.");
         PrintCameraInfo();
     }
+}
+
+void command_defaultSettings(int nlhs, mxArray * plhs[],int nrhs, const mxArray * prhs []){
+    fc2Error error;
+    error =fc2WriteRegister(context,0x1050,0x80000001); //BAYER_MONO_CTRL: turn on
+    error =fc2WriteRegister(context,0x808,0x80000000); //Sharpness turn off
+    error =fc2WriteRegister(context,0x818,0xC0000400); //Gamma: turn off
 }
 
 void command_start_capture(int nlhs, mxArray * plhs[],int nrhs, const mxArray * prhs []){

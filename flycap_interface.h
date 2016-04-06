@@ -8,6 +8,7 @@ void command_Setfmt7ImageSettings(int , mxArray * [], int, const mxArray * []);
 void command_GetImage(int , mxArray * [], int, const mxArray * []);
 void command_GetProperty(int , mxArray * [], int, const mxArray * []);
 void command_SetProperty(int , mxArray * [], int, const mxArray * []);
+void command_defaultSettings(int , mxArray * [], int, const mxArray * []);
 
 
 void PrintCameraInfo();
