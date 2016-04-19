@@ -58,6 +58,8 @@ void mexFunction( int nlhs, mxArray *plhs[],
         command_enableEmbededInfo(nlhs, plhs, nrhs, prhs);
     else if (!strcmp(command_name, "Setfmt7ImageSettings"))
         command_Setfmt7ImageSettings(nlhs, plhs, nrhs, prhs);
+    else if (!strcmp(command_name, "GetFormat7Info"))
+        command_GetFormat7Info(nlhs, plhs, nrhs, prhs);
     else if (!strcmp(command_name, "GetImage"))
         command_GetImage(nlhs, plhs, nrhs, prhs);
     else if (!strcmp(command_name, "GetProperty"))
@@ -208,6 +210,46 @@ void command_enableEmbededInfo(int nlhs, mxArray * plhs[],int nrhs, const mxArra
     }
 }
 
+void command_GetFormat7Info(int nlhs, mxArray * plhs[],int nrhs, const mxArray * prhs []){
+    
+    fc2Error error;
+    fc2Format7Info info;
+    BOOL pSupported;
+    
+    double* imagesize;
+    double* imagesOffsetStep;
+    double* imagesSizeStep;
+    
+    if (nrhs != 2)
+        mexErrMsgTxt("Insufficient input arguments (1 required), need to specfiy fc2mode");
+    if (nlhs != 3)
+        mexErrMsgTxt("Insufficient output arguments, need 3");
+    
+    info.mode=(int)mxGetScalar(prhs[1]);
+    
+    error=fc2GetFormat7Info(context, &info, &pSupported);
+    if ( error != FC2_ERROR_OK )
+    {
+        mexPrintf( "Error in command_GetFormat7Info: %d %d\n", error,pSupported);
+        mexErrMsgTxt("fc2GetFormat7Info");
+    }
+
+    plhs[0]=mxCreateDoubleMatrix(1, 2, mxREAL);
+    imagesize=mxGetPr(plhs[0]);
+    imagesize[0]=(double)info.maxWidth;
+    imagesize[1]=(double)info.maxHeight;
+
+    plhs[1]=mxCreateDoubleMatrix(1, 2, mxREAL);
+    imagesOffsetStep=mxGetPr(plhs[1]);
+    imagesOffsetStep[0]=(double)info.offsetHStepSize;
+    imagesOffsetStep[1]=(double)info.offsetVStepSize;
+    
+    plhs[2]=mxCreateDoubleMatrix(1, 2, mxREAL);
+    imagesSizeStep=mxGetPr(plhs[2]);
+    imagesSizeStep[0]=(double)info.imageHStepSize;
+    imagesSizeStep[1]=(double)info.imageVStepSize;
+}
+
 void command_Setfmt7ImageSettings(int nlhs, mxArray * plhs[],int nrhs, const mxArray * prhs []){
     
     fc2Error error;
@@ -219,6 +261,11 @@ void command_Setfmt7ImageSettings(int nlhs, mxArray * plhs[],int nrhs, const mxA
     int i;
     BOOL captureWasRunning;
     
+    if (!mxIsDouble(prhs[1]))
+    {
+        mexPrintf( "Error in command_Setfmt7ImageSettings:ROI:NotDouble %d\n", error );
+        mexErrMsgTxt("command_Setfmt7ImageSettings ROI based is not type double");
+    }
     
     roiDbl = mxGetPr(prhs[1]);
     
@@ -226,7 +273,7 @@ void command_Setfmt7ImageSettings(int nlhs, mxArray * plhs[],int nrhs, const mxA
         roi[i]=(unsigned int)roiDbl[i]; //convert double to uint32
     }
     
-    //mexPrintf("x %d y %d w %d h %d",roi[0],roi[1],roi[2],roi[3]);
+    //mexPrintf("x %d y %d w %d h %d \n",roi[0],roi[1],roi[2],roi[3]);
     if (nrhs == 2){
         fmt7ImageSettings.mode = FC2_MODE_0;
     }
@@ -355,7 +402,7 @@ void command_GetProperty(int nlhs, mxArray * plhs[],int nrhs, const mxArray * pr
     float propValueOut;
     
     if (nrhs != 2)
-        mexErrMsgTxt("Insufficient input arguments, need 2");
+        mexErrMsgTxt("Insufficient input arguments, need property");
     if (nlhs != 1)
         mexErrMsgTxt("Insufficient output arguments, need 1");
     
